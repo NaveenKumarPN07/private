@@ -1,42 +1,43 @@
-import express from "express";
-import cors from "cors";
-import { createServer } from "http";
-import "dotenv/config";
+import express          from 'express';
+import cors             from 'cors';
+import { createServer } from 'http';
+import 'dotenv/config';
 
-import connectDB from "./config/db.js";
-import { initSocket } from "./socket/socket.js";
-import alertRoutes from "./routes/alertRoutes.js";
+import connectDB            from './config/db.js';
+import { initSocket }       from './socket/socket.js';
+import { initSignaling }    from './socket/signalingSocket.js';
+import alertRoutes          from './routes/alertRoutes.js';
 
-const app = express();
-
-// create HTTP server
+const app        = express();
 const httpServer = createServer(app);
 
-// initialize socket
-const io = initSocket(httpServer);
-
-// connect database
-await connectDB();
-
-// middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// make io accessible inside routes/controllers
-app.set("io", io);
+// Initialize Socket.io on the http server
+const io = initSocket(httpServer);
 
-// test route
-app.get("/", (req, res) => {
-  res.send("Server is running");
-});
+// Initialize WebRTC signalling
+initSignaling(io);
 
-// routes
-app.use("/api/alerts", alertRoutes);
+// Make io accessible in controllers via req.app.get('io')
+app.set('io', io);
 
-// PORT
+// Health check
+app.get('/', (req, res) => res.json({ status: 'ok' }));
+
+// Routes
+app.use('/api/alerts', alertRoutes);
+
 const PORT = process.env.PORT || 5000;
 
-// start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Connect DB then start — httpServer, not app
+connectDB().then(() => {
+  httpServer.listen(PORT,'0.0.0.0', () => {          // ← httpServer here
+    console.log(`Server running on port ${PORT}`);
+  });
+}).catch((err) => {
+  console.error('DB connection failed:', err);
+  process.exit(1);
+})
